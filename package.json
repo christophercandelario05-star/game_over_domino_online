@@ -1,0 +1,13 @@
+{
+  "name": "game-over-domino-online",
+  "version": "1.0.0",
+  "description": "Demo multijugador 1v1 de domin\u00f3 online con monedas virtuales.",
+  "main": "server.js",
+  "scripts": {
+    "start": "node server.js"
+  },
+  "dependencies": {
+    "express": "^4.21.2",
+    "socket.io": "^4.8.1"
+  }
+}
