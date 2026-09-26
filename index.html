@@ -1,0 +1,147 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Game Over Domino Online</title>
+<style>
+:root{--green:#0d5a39;--dark:#082d1f;--gold:#f5c542;--white:#f7f7f7}
+*{box-sizing:border-box}
+body{margin:0;font-family:Arial,Helvetica,sans-serif;background:linear-gradient(#0a412b,#073321);color:#fff;min-height:100vh}
+header{background:var(--dark);padding:14px 18px;display:flex;justify-content:space-between;align-items:center;box-shadow:0 2px 8px #0008}
+header h1{font-size:20px;margin:0}.badge{background:var(--gold);color:#222;padding:8px 12px;border-radius:20px;font-weight:bold}
+main{max-width:1000px;margin:auto;padding:16px}
+.card{background:#0b4b31;border:1px solid #ffffff22;border-radius:16px;padding:18px;box-shadow:0 6px 18px #0004;margin-bottom:16px}
+.row{display:flex;gap:10px;flex-wrap:wrap;justify-content:center}
+input{padding:12px;border-radius:8px;border:0;min-width:180px;font-size:16px}
+button{padding:11px 16px;border:0;border-radius:8px;background:var(--gold);color:#222;font-weight:bold;cursor:pointer}
+button.secondary{background:#ddd}button:disabled{opacity:.45;cursor:not-allowed}
+#lobby{text-align:center}
+#game{display:none}
+#status{text-align:center;font-size:18px;font-weight:bold;margin:10px}
+.playerbar{display:flex;justify-content:space-between;gap:12px;flex-wrap:wrap;background:#083d29;padding:10px;border-radius:10px}
+#board{min-height:170px;display:flex;align-items:center;justify-content:center;flex-wrap:wrap;gap:6px;padding:18px;border-radius:14px;background:#126b45;margin:14px 0}
+.hand{display:flex;justify-content:center;flex-wrap:wrap;gap:8px;padding:12px}
+.tile{width:55px;height:88px;background:var(--white);color:#111;border:2px solid #111;border-radius:8px;display:flex;flex-direction:column;justify-content:space-around;align-items:center;font-size:21px;font-weight:bold;cursor:pointer;box-shadow:0 3px 7px #0007}
+.tile.h{width:88px;height:55px;flex-direction:row;cursor:default}
+.tile .line{width:70%;height:2px;background:#111}.tile.h .line{width:2px;height:70%}
+.tile.disabled{opacity:.45;cursor:not-allowed}
+#message{min-height:24px;text-align:center;color:#ffe98a}
+.code{font-size:26px;letter-spacing:4px;font-weight:bold;color:#ffe16b}
+.small{font-size:13px;opacity:.85;text-align:center}
+</style>
+</head>
+<body>
+<header>
+  <h1>🁣 Game Over Domino Online</h1>
+  <div class="badge">1 vs 1</div>
+</header>
+<main>
+  <section id="lobby" class="card">
+    <h2>Jugar online</h2>
+    <p>Escribe tu nombre y crea una sala o entra con el código de tu rival.</p>
+    <div class="row">
+      <input id="name" placeholder="Tu nombre" maxlength="20">
+    </div>
+    <br>
+    <div class="row">
+      <button onclick="createRoom()">Crear sala</button>
+      <input id="roomCode" placeholder="Código de sala" maxlength="6" style="text-transform:uppercase">
+      <button onclick="joinRoom()">Entrar a sala</button>
+    </div>
+    <p id="message"></p>
+  </section>
+
+  <section id="game">
+    <div class="card">
+      <div class="playerbar">
+        <div>👤 Tú: <b id="myName"></b></div>
+        <div>Sala: <span class="code" id="code"></span></div>
+        <div>🎯 Rival: <b id="opponentName"></b> (<span id="opponentCount">0</span> fichas)</div>
+      </div>
+
+      <div id="status">Esperando...</div>
+      <div id="board"></div>
+
+      <h3 style="text-align:center">Tus fichas</h3>
+      <div id="hand" class="hand"></div>
+
+      <div class="row">
+        <button id="drawBtn" onclick="drawTile()">Robar ficha</button>
+        <button id="passBtn" class="secondary" onclick="passTurn()">Pasar turno</button>
+        <button id="restartBtn" class="secondary" onclick="restartGame()" style="display:none">Nueva partida</button>
+      </div>
+      <p class="small">Demo con monedas virtuales solamente. No incluye depósitos, apuestas ni retiros de dinero real.</p>
+    </div>
+  </section>
+</main>
+
+<script src="/socket.io/socket.io.js"></script>
+<script>
+const socket = io();
+let state = null;
+
+function tileHTML(t, h=false){
+  return `<div class="tile ${h?'h':''}"><div>${t[0]}</div><span class="line"></span><div>${t[1]}</div></div>`;
+}
+
+function createRoom(){
+  const name = document.getElementById("name").value.trim() || "Jugador 1";
+  socket.emit("createRoom",{name});
+}
+function joinRoom(){
+  const name = document.getElementById("name").value.trim() || "Jugador 2";
+  const code = document.getElementById("roomCode").value.trim().toUpperCase();
+  if(!code) return showMsg("Escribe el código de la sala.");
+  socket.emit("joinRoom",{code,name});
+}
+function showMsg(msg){ document.getElementById("message").textContent = msg; }
+
+socket.on("errorMessage", msg => {
+  showMsg(msg);
+  const s = document.getElementById("status");
+  if (s) s.textContent = msg;
+});
+
+socket.on("state", s => {
+  state = s;
+  document.getElementById("lobby").style.display = "none";
+  document.getElementById("game").style.display = "block";
+  document.getElementById("code").textContent = s.code;
+  document.getElementById("myName").textContent = s.myName;
+  document.getElementById("opponentName").textContent = s.opponentName;
+  document.getElementById("opponentCount").textContent = s.opponentCount;
+  document.getElementById("status").textContent = s.status;
+
+  const board = document.getElementById("board");
+  board.innerHTML = s.chain.length ? s.chain.map(t=>tileHTML(t,true)).join("") : "<div style='opacity:.7'>Mesa vacía</div>";
+
+  const hand = document.getElementById("hand");
+  hand.innerHTML = "";
+  const myTurn = s.started && !s.gameOver && s.turn === s.myIndex;
+  s.myHand.forEach((t,i)=>{
+    const wrap = document.createElement("div");
+    wrap.innerHTML = tileHTML(t,false);
+    const el = wrap.firstChild;
+    if(!myTurn) el.classList.add("disabled");
+    else el.onclick = () => socket.emit("playTile",{code:s.code,tileIndex:i});
+    hand.appendChild(el);
+  });
+
+  document.getElementById("drawBtn").disabled = !myTurn;
+  document.getElementById("passBtn").disabled = !myTurn;
+  document.getElementById("restartBtn").style.display = s.gameOver && s.opponentName !== "Esperando rival..." ? "inline-block" : "none";
+});
+
+function drawTile(){
+  if(state) socket.emit("drawTile",{code:state.code});
+}
+function passTurn(){
+  if(state) socket.emit("passTurn",{code:state.code});
+}
+function restartGame(){
+  if(state) socket.emit("restartGame",{code:state.code});
+}
+</script>
+</body>
+</html>
